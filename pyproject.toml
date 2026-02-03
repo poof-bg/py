@@ -41,8 +41,8 @@ dependencies = [
 [project.urls]
 Homepage = "https://poof.bg"
 Documentation = "https://docs.poof.bg"
-Repository = "https://github.com/poof-bg/poof-python"
-Issues = "https://github.com/poof-bg/poof-python/issues"
+Repository = "https://github.com/poof-bg/py"
+Issues = "https://github.com/poof-bg/py/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/poof"]

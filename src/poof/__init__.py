@@ -178,7 +178,7 @@ class Poof:
         """Get default headers for API requests."""
         return {
             "x-api-key": self._api_key,
-            "User-Agent": f"poof-python/{__version__}",
+            "User-Agent": f"poofbg/{__version__}",
         }
 
     def _handle_error(self, response: httpx.Response) -> None:

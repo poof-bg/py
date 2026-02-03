@@ -1,11 +1,11 @@
-# poof-python
+# poofbg
 
 The official Python SDK for the [Poof](https://poof.bg) background removal API.
 
 ## Installation
 
 ```bash
-pip install poof-python
+pip install poofbg
 ```
 
 ## Quick Start
