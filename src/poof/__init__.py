@@ -54,8 +54,8 @@ DEFAULT_TIMEOUT = 60.0
 # Type aliases
 ImageInput = Union[str, Path, bytes, BinaryIO]
 Format = Literal["png", "jpg", "webp"]
-Channels = Literal["rgba", "rgb"]
-Size = Literal["full", "preview", "small", "medium", "large"]
+Channels = Literal["rgba", "rgb", "alpha"]
+Size = Literal["full", "preview", "medium", "hd"]
 
 
 class AccountInfo(TypedDict, total=False):
@@ -78,6 +78,12 @@ class RemoveBackgroundResult:
         processing_time_ms: Processing time in milliseconds.
         width: Output image width in pixels.
         height: Output image height in pixels.
+        matte_confidence: Confidence in the alpha matte, 0-1. 1 means a fully
+            decisive mask; lower values mean the model hedged. Heuristic, not
+            a calibrated probability.
+        matte_ambiguous_ratio: Fraction of pixels with alpha between 0.1 and
+            0.9, 0-1. High values indicate large uncertain regions - useful
+            for flagging results for review.
     """
 
     __slots__ = (
@@ -87,6 +93,8 @@ class RemoveBackgroundResult:
         "processing_time_ms",
         "width",
         "height",
+        "matte_confidence",
+        "matte_ambiguous_ratio",
     )
 
     def __init__(
@@ -97,6 +105,8 @@ class RemoveBackgroundResult:
         processing_time_ms: int | None = None,
         width: int | None = None,
         height: int | None = None,
+        matte_confidence: float | None = None,
+        matte_ambiguous_ratio: float | None = None,
     ) -> None:
         self.data = data
         self.content_type = content_type
@@ -104,6 +114,8 @@ class RemoveBackgroundResult:
         self.processing_time_ms = processing_time_ms
         self.width = width
         self.height = height
+        self.matte_confidence = matte_confidence
+        self.matte_ambiguous_ratio = matte_ambiguous_ratio
 
     def __bytes__(self) -> bytes:
         """Return the image data as bytes."""
@@ -262,7 +274,8 @@ class Poof:
         channels: Channels | None = None,
         bg_color: str | None = None,
         size: Size | None = None,
-        crop: bool | None = None,
+        crop: bool | str | None = None,
+        padding: str | None = None,
     ) -> RemoveBackgroundResult:
         """Remove background from an image.
 
@@ -270,13 +283,16 @@ class Poof:
             image: Image to process. Can be a file path (str or Path),
                 bytes, or a file-like object.
             format: Output format - "png", "jpg", or "webp". Defaults to "png".
-            channels: Color channels - "rgba" for transparency, "rgb" for opaque.
-                Defaults to "rgba".
-            bg_color: Background color when channels="rgb". Can be hex (#ffffff),
-                rgb, or color name.
-            size: Output size preset - "full", "preview", "small", "medium", "large".
+            channels: Color channels - "rgba" for transparency, "rgb" for opaque,
+                "alpha" for the grayscale alpha mask only. Defaults to "rgba".
+            bg_color: Background color when channels is "rgb" or "rgba". Can be
+                hex (#ffffff), rgb, or color name.
+            size: Output size preset - "full", "preview", "medium", "hd".
                 Defaults to "full".
-            crop: Whether to crop the image to the subject bounds.
+            crop: Crop the image to the subject bounds. Pass True/False or an
+                aspect ratio string like "1:1", "4:3", "16:9".
+            padding: Padding around the subject when crop is enabled, as a
+                fraction ("0.1") or percentage ("10%").
 
         Returns:
             RemoveBackgroundResult containing the processed image and metadata.
@@ -309,7 +325,9 @@ class Poof:
         if size is not None:
             form_data["size"] = size
         if crop is not None:
-            form_data["crop"] = str(crop).lower()
+            form_data["crop"] = str(crop).lower() if isinstance(crop, bool) else crop
+        if padding is not None:
+            form_data["padding"] = padding
 
         response = self._client.post(
             f"{self._base_url}/remove",
@@ -326,6 +344,8 @@ class Poof:
         processing_time = headers.get("X-Processing-Time-Ms")
         width = headers.get("X-Image-Width")
         height = headers.get("X-Image-Height")
+        matte_confidence = headers.get("X-Matte-Confidence")
+        matte_ambiguous_ratio = headers.get("X-Matte-Ambiguous-Ratio")
 
         return RemoveBackgroundResult(
             data=response.content,
@@ -334,6 +354,8 @@ class Poof:
             processing_time_ms=int(processing_time) if processing_time else None,
             width=int(width) if width else None,
             height=int(height) if height else None,
+            matte_confidence=float(matte_confidence) if matte_confidence else None,
+            matte_ambiguous_ratio=float(matte_ambiguous_ratio) if matte_ambiguous_ratio else None,
         )
 
     def me(self) -> AccountInfo:
