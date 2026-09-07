@@ -17,10 +17,9 @@ Example:
 from __future__ import annotations
 
 import mimetypes
-import os
 from io import IOBase
 from pathlib import Path
-from typing import BinaryIO, Literal, TypedDict, Union
+from typing import BinaryIO, Literal, TypedDict, Union, cast
 
 import httpx
 
@@ -34,7 +33,7 @@ from .exceptions import (
     ValidationError,
 )
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __all__ = [
     "Poof",
     "PoofError",
@@ -56,6 +55,7 @@ ImageInput = Union[str, Path, bytes, BinaryIO]
 Format = Literal["png", "jpg", "webp"]
 Channels = Literal["rgba", "rgb", "alpha"]
 Size = Literal["full", "preview", "medium", "hd"]
+Fit = Literal["contain", "cover", "scale-down"]
 
 
 class AccountInfo(TypedDict, total=False):
@@ -230,9 +230,7 @@ class Poof:
         else:
             raise PoofError(**error_kwargs)
 
-    def _prepare_image(
-        self, image: ImageInput
-    ) -> tuple[str, bytes, str]:
+    def _prepare_image(self, image: ImageInput) -> tuple[str, bytes, str]:
         """Prepare image for upload.
 
         Returns:
@@ -244,20 +242,24 @@ class Poof:
                 raise FileNotFoundError(f"Image file not found: {path}")
             filename = path.name
             data = path.read_bytes()
-            content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+            content_type = (
+                mimetypes.guess_type(filename)[0] or "application/octet-stream"
+            )
         elif isinstance(image, bytes):
             filename = "image"
             data = image
             content_type = "application/octet-stream"
         elif isinstance(image, IOBase) or hasattr(image, "read"):
             # File-like object
-            data = image.read()  # type: ignore
+            data = image.read()
             filename = getattr(image, "name", "image")
             if isinstance(filename, (str, Path)):
                 filename = Path(filename).name
             else:
                 filename = "image"
-            content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+            content_type = (
+                mimetypes.guess_type(filename)[0] or "application/octet-stream"
+            )
         else:
             raise TypeError(
                 f"image must be a file path, bytes, or file-like object, "
@@ -276,6 +278,9 @@ class Poof:
         size: Size | None = None,
         crop: bool | str | None = None,
         padding: str | None = None,
+        width: int | None = None,
+        height: int | None = None,
+        fit: Fit | None = None,
     ) -> RemoveBackgroundResult:
         """Remove background from an image.
 
@@ -293,6 +298,14 @@ class Poof:
                 aspect ratio string like "1:1", "4:3", "16:9".
             padding: Padding around the subject when crop is enabled, as a
                 fraction ("0.1") or percentage ("10%").
+            width: Output width in pixels (1-6000). On its own, the height
+                follows the aspect ratio. Overrides ``size``.
+            height: Output height in pixels (1-6000). On its own, the width
+                follows the aspect ratio. Overrides ``size``.
+            fit: How to fit the image into ``width`` x ``height`` (never
+                stretched) - "contain" (default; fit inside, pad the rest),
+                "cover" (fill, crop the overflow around the subject) or
+                "scale-down" (like contain, but never enlarge a smaller image).
 
         Returns:
             RemoveBackgroundResult containing the processed image and metadata.
@@ -309,6 +322,8 @@ class Poof:
         Example:
             >>> result = client.remove_background("photo.jpg", format="webp", crop=True)
             >>> result.save("output.webp")
+            >>> # Exact 500x500 product image, subject cropped and centred
+            >>> result = client.remove_background("photo.jpg", crop=True, width=500, height=500)
         """
         filename, data, content_type = self._prepare_image(image)
 
@@ -328,6 +343,12 @@ class Poof:
             form_data["crop"] = str(crop).lower() if isinstance(crop, bool) else crop
         if padding is not None:
             form_data["padding"] = padding
+        if width is not None:
+            form_data["width"] = str(width)
+        if height is not None:
+            form_data["height"] = str(height)
+        if fit is not None:
+            form_data["fit"] = fit
 
         response = self._client.post(
             f"{self._base_url}/remove",
@@ -355,7 +376,9 @@ class Poof:
             width=int(width) if width else None,
             height=int(height) if height else None,
             matte_confidence=float(matte_confidence) if matte_confidence else None,
-            matte_ambiguous_ratio=float(matte_ambiguous_ratio) if matte_ambiguous_ratio else None,
+            matte_ambiguous_ratio=float(matte_ambiguous_ratio)
+            if matte_ambiguous_ratio
+            else None,
         )
 
     def me(self) -> AccountInfo:
@@ -383,4 +406,4 @@ class Poof:
         if response.status_code != 200:
             self._handle_error(response)
 
-        return response.json()
+        return cast(AccountInfo, response.json())
