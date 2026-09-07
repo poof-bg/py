@@ -70,6 +70,17 @@ result = client.remove_background(
 
 # Different size presets
 result = client.remove_background("photo.jpg", size="preview")
+
+# Exact output size, never stretched: subject cropped, then fitted into 500x500
+result = client.remove_background("photo.jpg", crop=True, width=500, height=500)
+
+# Fill the canvas instead (overflow cropped around the subject), on white
+result = client.remove_background(
+    "photo.jpg", width=1080, height=1080, fit="cover", format="jpg", bg_color="#ffffff"
+)
+
+# Cap the width and keep the aspect ratio; small images are left as they are
+result = client.remove_background("photo.jpg", width=1000, fit="scale-down")
 ```
 
 ### Result Metadata
@@ -166,7 +177,7 @@ Create a new Poof client.
 | `timeout` | `float` | `60.0` | Request timeout in seconds |
 | `httpx_client` | `httpx.Client` | `None` | Custom HTTP client |
 
-### `client.remove_background(image, *, format, channels, bg_color, size, crop)`
+### `client.remove_background(image, *, format, channels, bg_color, size, crop, padding, width, height, fit)`
 
 Remove background from an image.
 
@@ -174,10 +185,14 @@ Remove background from an image.
 |-----------|------|---------|-------------|
 | `image` | `str \| Path \| bytes \| BinaryIO` | required | Image to process |
 | `format` | `"png" \| "jpg" \| "webp"` | `"png"` | Output format |
-| `channels` | `"rgba" \| "rgb"` | `"rgba"` | Color channels |
-| `bg_color` | `str` | `None` | Background color (when `channels="rgb"`) |
-| `size` | `"full" \| "preview" \| "small" \| "medium" \| "large"` | `"full"` | Output size |
-| `crop` | `bool` | `False` | Crop to subject bounds |
+| `channels` | `"rgba" \| "rgb" \| "alpha"` | `"rgba"` | Color channels (`alpha` = grayscale mask only) |
+| `bg_color` | `str` | `None` | Background color (when `channels` is `"rgb"` or `"rgba"`) |
+| `size` | `"full" \| "preview" \| "medium" \| "hd"` | `"full"` | Output size preset (megapixel cap); ignored when `width`/`height` is set |
+| `crop` | `bool \| str` | `False` | Crop to subject bounds, or an aspect ratio like `"1:1"` |
+| `padding` | `str` | `"10%"` | Padding around the subject when cropping (`"10%"`, `"0.1"`, or `"10%,7.5%"`) |
+| `width` | `int` | `None` | Output width in pixels (1-6000); alone, height follows the aspect ratio |
+| `height` | `int` | `None` | Output height in pixels (1-6000); alone, width follows the aspect ratio |
+| `fit` | `"contain" \| "cover" \| "scale-down"` | `"contain"` | How to fit into `width` x `height` without stretching: pad, crop the overflow, or pad without enlarging |
 
 Returns a `RemoveBackgroundResult` with:
 - `data`: Image bytes
