@@ -17,10 +17,9 @@ Example:
 from __future__ import annotations
 
 import mimetypes
-import os
 from io import IOBase
 from pathlib import Path
-from typing import BinaryIO, Literal, TypedDict, Union
+from typing import BinaryIO, Literal, TypedDict, Union, cast
 
 import httpx
 
@@ -231,9 +230,7 @@ class Poof:
         else:
             raise PoofError(**error_kwargs)
 
-    def _prepare_image(
-        self, image: ImageInput
-    ) -> tuple[str, bytes, str]:
+    def _prepare_image(self, image: ImageInput) -> tuple[str, bytes, str]:
         """Prepare image for upload.
 
         Returns:
@@ -245,20 +242,24 @@ class Poof:
                 raise FileNotFoundError(f"Image file not found: {path}")
             filename = path.name
             data = path.read_bytes()
-            content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+            content_type = (
+                mimetypes.guess_type(filename)[0] or "application/octet-stream"
+            )
         elif isinstance(image, bytes):
             filename = "image"
             data = image
             content_type = "application/octet-stream"
         elif isinstance(image, IOBase) or hasattr(image, "read"):
             # File-like object
-            data = image.read()  # type: ignore
+            data = image.read()
             filename = getattr(image, "name", "image")
             if isinstance(filename, (str, Path)):
                 filename = Path(filename).name
             else:
                 filename = "image"
-            content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+            content_type = (
+                mimetypes.guess_type(filename)[0] or "application/octet-stream"
+            )
         else:
             raise TypeError(
                 f"image must be a file path, bytes, or file-like object, "
@@ -375,7 +376,9 @@ class Poof:
             width=int(width) if width else None,
             height=int(height) if height else None,
             matte_confidence=float(matte_confidence) if matte_confidence else None,
-            matte_ambiguous_ratio=float(matte_ambiguous_ratio) if matte_ambiguous_ratio else None,
+            matte_ambiguous_ratio=float(matte_ambiguous_ratio)
+            if matte_ambiguous_ratio
+            else None,
         )
 
     def me(self) -> AccountInfo:
@@ -403,4 +406,4 @@ class Poof:
         if response.status_code != 200:
             self._handle_error(response)
 
-        return response.json()
+        return cast(AccountInfo, response.json())

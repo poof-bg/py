@@ -20,7 +20,10 @@ def _client_capturing(captured: dict) -> Poof:
             },
         )
 
-    return Poof(api_key="poof_test", httpx_client=httpx.Client(transport=httpx.MockTransport(handler)))
+    return Poof(
+        api_key="poof_test",
+        httpx_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
 
 
 def _form_fields(request: httpx.Request) -> dict[str, str]:
@@ -39,7 +42,9 @@ def _form_fields(request: httpx.Request) -> dict[str, str]:
 def test_output_size_parameters_are_sent():
     captured: dict = {}
     client = _client_capturing(captured)
-    result = client.remove_background(io.BytesIO(b"img"), crop=True, width=500, height=300, fit="cover")
+    result = client.remove_background(
+        io.BytesIO(b"img"), crop=True, width=500, height=300, fit="cover"
+    )
 
     fields = _form_fields(captured["request"])
     assert fields["crop"] == "true"
@@ -51,7 +56,9 @@ def test_output_size_parameters_are_sent():
 
 def test_single_dimension_with_scale_down():
     captured: dict = {}
-    _client_capturing(captured).remove_background(io.BytesIO(b"img"), width=1000, fit="scale-down")
+    _client_capturing(captured).remove_background(
+        io.BytesIO(b"img"), width=1000, fit="scale-down"
+    )
 
     fields = _form_fields(captured["request"])
     assert fields == {"width": "1000", "fit": "scale-down"}
