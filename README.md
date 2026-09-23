@@ -1,6 +1,8 @@
 # poofbg
 
-The official Python SDK for the [Poof](https://poof.bg) background removal API.
+The official Python SDK for the [Poof](https://poof.bg) [background removal API](https://poof.bg/background-removal-api).
+
+Migrating from remove.bg? It shuts down on 1 December 2026 — see the [remove.bg alternative and migration guide](https://poof.bg/alternative/remove-bg).
 
 ## Installation
 
