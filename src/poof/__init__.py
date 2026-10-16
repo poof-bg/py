@@ -1,25 +1,28 @@
 """
 Poof - Python SDK for the Poof background removal API.
 
-Simple, clean API for removing backgrounds from images.
+Simple, clean API for removing backgrounds from images and videos.
 
 Example:
     from poof import Poof
 
     client = Poof(api_key="your-api-key")
     result = client.remove_background("image.jpg")
+    result.save("output.png")
 
-    # Save the result
-    with open("output.png", "wb") as f:
-        f.write(result)
+    # Videos are processed as a job
+    job = client.remove_background("clip.mp4", wait=True)
+    client.download(job, "clip.webm")
 """
 
 from __future__ import annotations
 
 import mimetypes
+import time
+from dataclasses import dataclass, field
 from io import IOBase
 from pathlib import Path
-from typing import BinaryIO, Literal, TypedDict, Union, cast
+from typing import Any, BinaryIO, Callable, Literal, TypedDict, Union, cast
 
 import httpx
 
@@ -33,7 +36,7 @@ from .exceptions import (
     ValidationError,
 )
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 __all__ = [
     "Poof",
     "PoofError",
@@ -45,6 +48,14 @@ __all__ = [
     "ServerError",
     "AccountInfo",
     "RemoveBackgroundResult",
+    "Job",
+    "ImageInput",
+    "Format",
+    "VideoFormat",
+    "Channels",
+    "Size",
+    "Fit",
+    "JobStatus",
 ]
 
 DEFAULT_BASE_URL = "https://api.poof.bg/v1"
@@ -53,9 +64,11 @@ DEFAULT_TIMEOUT = 60.0
 # Type aliases
 ImageInput = Union[str, Path, bytes, BinaryIO]
 Format = Literal["png", "jpg", "webp"]
+VideoFormat = Literal["webm", "mov", "mp4"]
 Channels = Literal["rgba", "rgb", "alpha"]
 Size = Literal["full", "preview", "medium", "hd"]
 Fit = Literal["contain", "cover", "scale-down"]
+JobStatus = Literal["queued", "processing", "completed", "failed"]
 
 
 class AccountInfo(TypedDict, total=False):
@@ -139,6 +152,90 @@ class RemoveBackgroundResult:
             f"size={len(self.data)}, "
             f"content_type={self.content_type!r}, "
             f"dimensions={self.width}x{self.height})"
+        )
+
+
+@dataclass
+class Job:
+    """A video background removal job.
+
+    Returned by :meth:`Poof.remove_background` when the input is a video,
+    and by :meth:`Poof.get_job` / :meth:`Poof.wait_for_job`.
+
+    Attributes:
+        id: Job id (``job_...``).
+        status: ``queued``, ``processing``, ``completed`` or ``failed``.
+        progress: Fraction of the video processed so far, 0 to 1.
+        created_at: When the job was accepted (ISO 8601).
+        started_at: When processing started, or None.
+        completed_at: When the job finished, or None.
+        duration_seconds: Duration of the input video.
+        fps: Frame rate of the input video.
+        width: Width of the input video in pixels.
+        height: Height of the input video in pixels.
+        frames: Number of frames in the input video.
+        credits: Credits charged for this job (refunded if it fails).
+        format: Output container: ``webm``, ``mov`` or ``mp4``.
+        channels: Output channels: ``rgba``, ``rgb`` or ``alpha``.
+        status_url: URL to poll for this job.
+        result_url: Public download URL of the result once ``completed``,
+            None before that. Valid until ``expires_at``.
+        expires_at: When ``result_url`` stops working (24 h after completion).
+        error: ``{"code": ..., "message": ...}`` when ``failed``, else None.
+        stats: Processing statistics once completed, else None.
+        raw: The job object exactly as returned by the API.
+    """
+
+    id: str
+    status: str
+    progress: float = 0.0
+    created_at: str | None = None
+    started_at: str | None = None
+    completed_at: str | None = None
+    duration_seconds: float | None = None
+    fps: float | None = None
+    width: int | None = None
+    height: int | None = None
+    frames: int | None = None
+    credits: int | None = None
+    format: str | None = None
+    channels: str | None = None
+    status_url: str | None = None
+    result_url: str | None = None
+    expires_at: str | None = None
+    error: dict[str, Any] | None = None
+    stats: dict[str, Any] | None = None
+    raw: dict[str, Any] = field(default_factory=dict, repr=False, compare=False)
+
+    @property
+    def is_done(self) -> bool:
+        """True once the job has ``completed`` or ``failed``."""
+        return self.status in ("completed", "failed")
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Job:
+        """Build a Job from the API's job object."""
+        return cls(
+            id=str(data.get("id", "")),
+            status=str(data.get("status", "")),
+            progress=float(data.get("progress") or 0.0),
+            created_at=data.get("created_at"),
+            started_at=data.get("started_at"),
+            completed_at=data.get("completed_at"),
+            duration_seconds=data.get("duration_seconds"),
+            fps=data.get("fps"),
+            width=data.get("width"),
+            height=data.get("height"),
+            frames=data.get("frames"),
+            credits=data.get("credits"),
+            format=data.get("format"),
+            channels=data.get("channels"),
+            status_url=data.get("status_url"),
+            result_url=data.get("result_url"),
+            expires_at=data.get("expires_at"),
+            error=data.get("error"),
+            stats=data.get("stats"),
+            raw=data,
         )
 
 
@@ -230,8 +327,8 @@ class Poof:
         else:
             raise PoofError(**error_kwargs)
 
-    def _prepare_image(self, image: ImageInput) -> tuple[str, bytes, str]:
-        """Prepare image for upload.
+    def _prepare_file(self, image: ImageInput) -> tuple[str, bytes, str]:
+        """Prepare an image or video for upload.
 
         Returns:
             Tuple of (filename, data, content_type)
@@ -239,30 +336,30 @@ class Poof:
         if isinstance(image, (str, Path)):
             path = Path(image)
             if not path.exists():
-                raise FileNotFoundError(f"Image file not found: {path}")
+                raise FileNotFoundError(f"File not found: {path}")
             filename = path.name
             data = path.read_bytes()
             content_type = (
                 mimetypes.guess_type(filename)[0] or "application/octet-stream"
             )
         elif isinstance(image, bytes):
-            filename = "image"
+            filename = "file"
             data = image
             content_type = "application/octet-stream"
         elif isinstance(image, IOBase) or hasattr(image, "read"):
             # File-like object
             data = image.read()
-            filename = getattr(image, "name", "image")
+            filename = getattr(image, "name", "file")
             if isinstance(filename, (str, Path)):
                 filename = Path(filename).name
             else:
-                filename = "image"
+                filename = "file"
             content_type = (
                 mimetypes.guess_type(filename)[0] or "application/octet-stream"
             )
         else:
             raise TypeError(
-                f"image must be a file path, bytes, or file-like object, "
+                f"file must be a file path, bytes, or file-like object, "
                 f"got {type(image).__name__}"
             )
 
@@ -270,9 +367,10 @@ class Poof:
 
     def remove_background(
         self,
-        image: ImageInput,
+        image: ImageInput | None = None,
         *,
-        format: Format | None = None,
+        url: str | None = None,
+        format: Format | VideoFormat | None = None,
         channels: Channels | None = None,
         bg_color: str | None = None,
         size: Size | None = None,
@@ -281,55 +379,78 @@ class Poof:
         width: int | None = None,
         height: int | None = None,
         fit: Fit | None = None,
-    ) -> RemoveBackgroundResult:
-        """Remove background from an image.
+        wait: bool = False,
+    ) -> RemoveBackgroundResult | Job:
+        """Remove the background from an image or a video.
+
+        Poof detects the media type from the bytes. An image is processed
+        synchronously and returned as a :class:`RemoveBackgroundResult`. A video
+        is accepted as a :class:`Job`: poll it with :meth:`wait_for_job` (or pass
+        ``wait=True``) and fetch the file with :meth:`download`.
 
         Args:
-            image: Image to process. Can be a file path (str or Path),
-                bytes, or a file-like object.
-            format: Output format - "png", "jpg", or "webp". Defaults to "png".
+            image: Image or video to process. Can be a file path (str or Path),
+                bytes, or a file-like object. Either ``image`` or ``url``.
+            url: Public HTTPS URL of the image or video to process instead of
+                uploading it (videos up to 500 MB).
+            format: Output format. Images: "png" (default), "jpg" or "webp".
+                Videos: "webm" (default, VP9 with alpha), "mov" (ProRes 4444)
+                or "mp4" (H.264, composited on ``bg_color``).
             channels: Color channels - "rgba" for transparency, "rgb" for opaque,
-                "alpha" for the grayscale alpha mask only. Defaults to "rgba".
-            bg_color: Background color when channels is "rgb" or "rgba". Can be
-                hex (#ffffff), rgb, or color name.
+                "alpha" for the grayscale alpha matte only. Defaults to "rgba".
+            bg_color: Background color when the output has no alpha ("rgb",
+                "jpg", "mp4"). Can be hex (#ffffff), rgb, or color name.
+                Defaults to white.
             size: Output size preset - "full", "preview", "medium", "hd".
-                Defaults to "full".
-            crop: Crop the image to the subject bounds. Pass True/False or an
-                aspect ratio string like "1:1", "4:3", "16:9".
-            padding: Padding around the subject when crop is enabled, as a
-                fraction ("0.1") or percentage ("10%").
-            width: Output width in pixels (1-6000). On its own, the height
-                follows the aspect ratio. Overrides ``size``.
-            height: Output height in pixels (1-6000). On its own, the width
-                follows the aspect ratio. Overrides ``size``.
-            fit: How to fit the image into ``width`` x ``height`` (never
-                stretched) - "contain" (default; fit inside, pad the rest),
-                "cover" (fill, crop the overflow around the subject) or
+                Defaults to "full" (videos are capped at 1080p).
+            crop: Images only. Crop the image to the subject bounds. Pass
+                True/False or an aspect ratio string like "1:1", "4:3", "16:9".
+            padding: Images only. Padding around the subject when crop is
+                enabled, as a fraction ("0.1") or percentage ("10%").
+            width: Images only. Output width in pixels (1-6000). On its own,
+                the height follows the aspect ratio. Overrides ``size``.
+            height: Images only. Output height in pixels (1-6000). On its own,
+                the width follows the aspect ratio. Overrides ``size``.
+            fit: Images only. How to fit the image into ``width`` x ``height``
+                (never stretched) - "contain" (default; fit inside, pad the
+                rest), "cover" (fill, crop the overflow around the subject) or
                 "scale-down" (like contain, but never enlarge a smaller image).
+            wait: For videos, block until the job finishes and return the
+                completed :class:`Job` (see :meth:`wait_for_job`). Has no
+                effect on images.
 
         Returns:
-            RemoveBackgroundResult containing the processed image and metadata.
+            RemoveBackgroundResult for an image, Job for a video.
 
         Raises:
-            FileNotFoundError: If image path doesn't exist.
+            FileNotFoundError: If the path doesn't exist.
+            ValueError: If neither or both of ``image`` and ``url`` are given.
             AuthError: Invalid or missing API key.
             PaymentRequiredError: Insufficient credits.
             RateLimitError: Rate limit exceeded.
-            ValidationError: Invalid parameters or image.
+            ValidationError: Invalid parameters or file.
             ServerError: Server-side error.
-            PoofError: Other API errors.
+            PoofError: Other API errors, including a failed job when ``wait``.
 
         Example:
             >>> result = client.remove_background("photo.jpg", format="webp", crop=True)
             >>> result.save("output.webp")
             >>> # Exact 500x500 product image, subject cropped and centred
             >>> result = client.remove_background("photo.jpg", crop=True, width=500, height=500)
+            >>> # Video: transparent WebM, wait for the job, then download it
+            >>> job = client.remove_background("clip.mp4", wait=True)
+            >>> client.download(job, "clip.webm")
         """
-        filename, data, content_type = self._prepare_image(image)
+        if (image is None) == (url is None):
+            raise ValueError("pass exactly one of image or url")
 
         # Build multipart form data
-        files = {"image_file": (filename, data, content_type)}
+        files: dict[str, tuple[str, bytes, str]] | None = None
         form_data: dict[str, str] = {}
+        if image is not None:
+            files = {"file": self._prepare_file(image)}
+        else:
+            form_data["url"] = cast(str, url)
 
         if format is not None:
             form_data["format"] = format
@@ -357,14 +478,19 @@ class Poof:
             data=form_data if form_data else None,
         )
 
+        if response.status_code == 202:
+            # Video: the API accepted a job
+            job = Job.from_dict(cast("dict[str, Any]", response.json()))
+            return self.wait_for_job(job) if wait else job
+
         if response.status_code != 200:
             self._handle_error(response)
 
         # Extract metadata from headers
         headers = response.headers
         processing_time = headers.get("X-Processing-Time-Ms")
-        width = headers.get("X-Image-Width")
-        height = headers.get("X-Image-Height")
+        out_width = headers.get("X-Image-Width")
+        out_height = headers.get("X-Image-Height")
         matte_confidence = headers.get("X-Matte-Confidence")
         matte_ambiguous_ratio = headers.get("X-Matte-Ambiguous-Ratio")
 
@@ -373,13 +499,140 @@ class Poof:
             content_type=headers.get("Content-Type"),
             request_id=headers.get("X-Request-ID"),
             processing_time_ms=int(processing_time) if processing_time else None,
-            width=int(width) if width else None,
-            height=int(height) if height else None,
+            width=int(out_width) if out_width else None,
+            height=int(out_height) if out_height else None,
             matte_confidence=float(matte_confidence) if matte_confidence else None,
             matte_ambiguous_ratio=float(matte_ambiguous_ratio)
             if matte_ambiguous_ratio
             else None,
         )
+
+    def get_job(self, job: str | Job) -> Job:
+        """Fetch the current state of a video job.
+
+        Polling is free and does not count against your rate limit.
+
+        Args:
+            job: Job id (``job_...``) or a :class:`Job`.
+
+        Returns:
+            The job with its current status, progress and ``result_url``.
+
+        Raises:
+            PoofError: ``job_not_found`` (404) or other API errors.
+
+        Example:
+            >>> job = client.get_job("job_8f3a1c2e9b7d4a10")
+            >>> print(job.status, job.progress)
+        """
+        job_id = job.id if isinstance(job, Job) else job
+        response = self._client.get(
+            f"{self._base_url}/jobs/{job_id}",
+            headers=self._get_headers(),
+        )
+
+        if response.status_code != 200:
+            self._handle_error(response)
+
+        return Job.from_dict(cast("dict[str, Any]", response.json()))
+
+    def wait_for_job(
+        self,
+        job: str | Job,
+        *,
+        poll_interval: float = 3.0,
+        timeout: float = 600.0,
+        on_progress: Callable[[Job], None] | None = None,
+    ) -> Job:
+        """Poll a video job until it completes.
+
+        Args:
+            job: Job id or :class:`Job` as returned by :meth:`remove_background`.
+            poll_interval: Seconds between status checks. Defaults to 3.
+            timeout: Give up after this many seconds. Defaults to 600 (10 min).
+                Videos process at roughly real time, so allow at least the
+                clip's duration.
+            on_progress: Called with the latest :class:`Job` after every poll.
+
+        Returns:
+            The completed job; ``result_url`` is set.
+
+        Raises:
+            PoofError: ``job_failed`` if the job failed (credits are refunded),
+                ``timeout`` if it did not finish within ``timeout`` seconds,
+                or other API errors.
+
+        Example:
+            >>> job = client.remove_background("clip.mp4")
+            >>> job = client.wait_for_job(job, on_progress=lambda j: print(j.progress))
+            >>> client.download(job, "clip.webm")
+        """
+        current = job if isinstance(job, Job) else None
+        deadline = time.monotonic() + timeout
+        while True:
+            if current is None or not current.is_done:
+                current = self.get_job(current if current is not None else job)
+                if on_progress is not None:
+                    on_progress(current)
+            if current.status == "completed":
+                return current
+            if current.status == "failed":
+                error = current.error or {}
+                raise PoofError(
+                    error.get("message") or f"Job {current.id} failed",
+                    code="job_failed",
+                    details=error.get("code"),
+                )
+            if time.monotonic() >= deadline:
+                raise PoofError(
+                    f"Job {current.id} did not finish within {timeout:g} seconds",
+                    code="timeout",
+                )
+            time.sleep(poll_interval)
+
+    def download(self, job: str | Job, path: str | Path) -> Path:
+        """Download a finished video to a file.
+
+        The result lives on Poof's CDN for 24 hours after completion and needs
+        no API key.
+
+        Args:
+            job: A completed :class:`Job`, or its ``result_url``.
+            path: Destination file path.
+
+        Returns:
+            The destination path.
+
+        Raises:
+            PoofError: ``job_not_ready`` if the job has no ``result_url`` yet,
+                or ``download_failed`` if the CDN did not return the file.
+
+        Example:
+            >>> job = client.remove_background("clip.mp4", format="mov", wait=True)
+            >>> client.download(job, "clip.mov")
+        """
+        if isinstance(job, Job):
+            if not job.result_url:
+                raise PoofError(
+                    f"Job {job.id} has no result yet (status: {job.status})",
+                    code="job_not_ready",
+                )
+            url = job.result_url
+        else:
+            url = job
+
+        dest = Path(path)
+        with self._client.stream("GET", url) as response:
+            if response.status_code != 200:
+                raise PoofError(
+                    f"Download failed with HTTP {response.status_code}",
+                    code="download_failed",
+                    status_code=response.status_code,
+                )
+            with dest.open("wb") as f:
+                for chunk in response.iter_bytes():
+                    f.write(chunk)
+        return dest
 
     def me(self) -> AccountInfo:
         """Get account information.
