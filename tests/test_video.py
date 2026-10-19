@@ -85,6 +85,24 @@ def test_video_upload_returns_job_and_uses_file_field():
     assert captured["request"].headers["x-api-key"] == "poof_test"
 
 
+def test_gif_format_is_sent_and_reported():
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["request"] = request
+        return httpx.Response(202, json={**JOB, "format": "gif"})
+
+    job = _client(handler).remove_background(
+        io.BytesIO(b"GIF89a\x01\x00\x01\x00"), format="gif", size="medium"
+    )
+
+    assert isinstance(job, Job)
+    assert job.format == "gif"
+    fields, files = _parts(captured["request"])
+    assert files == {"file": "file"}
+    assert fields == {"format": "gif", "size": "medium"}
+
+
 def test_url_input_sends_url_field_without_file():
     captured: dict = {}
 
