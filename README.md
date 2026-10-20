@@ -87,7 +87,7 @@ result = client.remove_background("photo.jpg", width=1000, fit="scale-down")
 
 ### Video
 
-Videos go through the same `remove_background()` call. Poof detects the media type from the bytes: an image comes back at once, a video is accepted as a `Job` that you poll and then download. The result is a transparent WebM by default; `format="mov"` gives a ProRes 4444 MOV, `format="mp4"` an H.264 video composited on `bg_color`, `format="gif"` a looping GIF with 1-bit transparency and no audio (for stickers and chat; add `size="medium"` to keep it small), and `channels="alpha"` a grayscale alpha matte. Audio, frame rate and duration are preserved. An animated GIF is accepted as input too. Video costs 5 credits per second.
+Videos go through the same `remove_background()` call. Poof detects the media type from the bytes: an image comes back at once, a video is accepted as a `Job` that you poll and then download. The result is a transparent WebM by default; `format="mov"` gives a ProRes 4444 MOV, `format="mp4"` an H.264 video composited on `bg_color`, `format="gif"` a looping GIF with 1-bit transparency and no audio, capped at 720p (for stickers and chat; add `size="preview"` for sticker-sized output), and `channels="alpha"` a grayscale alpha matte. Audio, frame rate and duration are preserved. An animated GIF is accepted as input too. Video costs 5 credits per second.
 
 ```python
 from poof import Job, Poof
