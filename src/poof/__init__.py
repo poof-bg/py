@@ -402,7 +402,9 @@ class Poof:
                 "jpg", "mp4"). Can be hex (#ffffff), rgb, or color name.
                 Defaults to white.
             size: Output size preset - "full", "preview", "medium", "hd".
-                Defaults to "full" (videos are capped at 1080p).
+                Defaults to "full". For videos the longest side is capped at
+                640 (preview), 1280 (medium), 1920 (hd) or the source
+                resolution up to 4096 px / 4K (full).
             crop: Images only. Crop the image to the subject bounds. Pass
                 True/False or an aspect ratio string like "1:1", "4:3", "16:9".
             padding: Images only. Padding around the subject when crop is

@@ -232,7 +232,7 @@ Remove the background from an image or a video.
 | `format` | `"png" \| "jpg" \| "webp"` / `"webm" \| "mov" \| "mp4"` | `"png"` / `"webm"` | Output format (images / videos) |
 | `channels` | `"rgba" \| "rgb" \| "alpha"` | `"rgba"` | Color channels (`alpha` = grayscale matte only) |
 | `bg_color` | `str` | white | Background color when the output has no alpha (`rgb`, `jpg`, `mp4`) |
-| `size` | `"full" \| "preview" \| "medium" \| "hd"` | `"full"` | Output size preset (megapixel cap; video capped at 1080p); ignored when `width`/`height` is set |
+| `size` | `"full" \| "preview" \| "medium" \| "hd"` | `"full"` | Output size preset (images: megapixel cap; video: longest side 640 / 1280 / 1920, `full` = source up to 4K); ignored when `width`/`height` is set |
 | `crop` | `bool \| str` | `False` | Images only. Crop to subject bounds, or an aspect ratio like `"1:1"` |
 | `padding` | `str` | `"10%"` | Images only. Padding around the subject when cropping (`"10%"`, `"0.1"`, or `"10%,7.5%"`) |
 | `width` | `int` | `None` | Images only. Output width in pixels (1-6000); alone, height follows the aspect ratio |
