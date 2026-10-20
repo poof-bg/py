@@ -69,3 +69,12 @@ def test_omitted_parameters_are_not_sent():
     _client_capturing(captured).remove_background(io.BytesIO(b"img"))
 
     assert _form_fields(captured["request"]) == {}
+
+
+def test_crop_is_only_sent_when_enabled():
+    captured: dict = {}
+    client = _client_capturing(captured)
+    client.remove_background(io.BytesIO(b"img"), crop=False)
+    assert "crop" not in _form_fields(captured["request"])
+    client.remove_background(io.BytesIO(b"img"), crop="1:1")
+    assert _form_fields(captured["request"])["crop"] == "1:1"

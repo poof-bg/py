@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 
 class PoofError(Exception):
     """Base exception for all Poof API errors.
@@ -9,9 +11,11 @@ class PoofError(Exception):
     Attributes:
         message: Human-readable error message.
         code: Machine-readable error code.
-        details: Additional details or troubleshooting steps.
+        details: Additional context. For validation errors a dict such as
+            ``{"field": "crop"}``, otherwise usually a string.
         request_id: Unique request ID for support.
         status_code: HTTP status code.
+        doc_url: Link to the documentation page for this error code.
     """
 
     def __init__(
@@ -19,15 +23,17 @@ class PoofError(Exception):
         message: str,
         *,
         code: str | None = None,
-        details: str | None = None,
+        details: dict[str, Any] | str | None = None,
         request_id: str | None = None,
         status_code: int | None = None,
+        doc_url: str | None = None,
     ) -> None:
         self.message = message
         self.code = code
         self.details = details
         self.request_id = request_id
         self.status_code = status_code
+        self.doc_url = doc_url
         super().__init__(message)
 
     def __repr__(self) -> str:

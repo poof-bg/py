@@ -87,7 +87,11 @@ result = client.remove_background("photo.jpg", width=1000, fit="scale-down")
 
 ### Video
 
-Videos go through the same `remove_background()` call. Poof detects the media type from the bytes: an image comes back at once, a video is accepted as a `Job` that you poll and then download. The result is a transparent WebM by default; `format="mov"` gives a ProRes 4444 MOV, `format="mp4"` an H.264 video composited on `bg_color`, `format="gif"` a looping GIF with 1-bit transparency and no audio, capped at 720p (for stickers and chat; add `size="preview"` for sticker-sized output), and `channels="alpha"` a grayscale alpha matte. Audio, frame rate and duration are preserved. An animated GIF is accepted as input too and is processed as a video; a still GIF is handled like any other image. Video costs 5 credits per second (10 above 30 fps).
+Videos go through the same `remove_background()` call. Poof detects the media type from the bytes: an image comes back at once, a video is accepted as a `Job` that you poll and then download. The result is a transparent WebM by default; `format="mov"` gives a ProRes 4444 MOV, `format="mp4"` an H.264 video composited on `bg_color`, `format="gif"` a looping GIF with 1-bit transparency and no audio, capped at 1280 px on the longest side (720p for widescreen) and 50 fps (for stickers and chat; add `size="preview"` for sticker-sized output), and `channels="alpha"` a grayscale alpha matte. Duration is preserved, and so are frame rate and audio, except that `gif` output is capped at 50 fps and `gif` and `channels="alpha"` output have no audio. An animated GIF is accepted as input too and is processed as a video; a still GIF is handled like any other image.
+
+**Limits:** up to 5 minutes of video, 100 MB per upload, 500 MB when passed as `url=`.
+
+**Pricing:** 5 credits per second of video, rounded up to the next whole second (10 credits per second above 30 fps). Animated GIF input is always 5 credits per second, whatever its frame rate. Credits are charged when the job is accepted and refunded automatically if it fails. If your remaining credits don't cover the whole clip, the upload is rejected with HTTP 402 (`PaymentRequiredError`, code `payment_required`) and nothing is charged.
 
 ```python
 from poof import Job, Poof
@@ -125,7 +129,7 @@ else:
     result.save("out.png")
 ```
 
-`crop`, `padding`, `width`, `height` and `fit` are image-only; sending them with a video raises a `ValidationError`. Results stay on the CDN for 24 hours (`job.expires_at`). A failed job is refunded and `wait_for_job()` raises a `PoofError` with `code == "job_failed"`.
+`crop`, `padding`, `width`, `height` and `fit` are image-only; sending them with a video raises a `ValidationError` (`crop=False` is not sent at all, so it is safe to pass). Error `details` is a dict for validation errors (e.g. `{"field": "crop"}`) and `doc_url` links to the error's docs page. Results stay on the CDN for 24 hours (`job.expires_at`). A failed job is refunded and `wait_for_job()` raises a `PoofError` with `code == "job_failed"`.
 
 ### Result Metadata
 
@@ -231,9 +235,9 @@ Remove the background from an image or a video.
 | `url` | `str` | `None` | Public HTTPS URL of the image or video instead of an upload |
 | `format` | `"png" \| "jpg" \| "webp"` / `"webm" \| "mov" \| "mp4" \| "gif"` | `"png"` / `"webm"` | Output format (images / videos) |
 | `channels` | `"rgba" \| "rgb" \| "alpha"` | `"rgba"` | Color channels (`alpha` = grayscale matte only) |
-| `bg_color` | `str` | white | Background color when the output has no alpha (`rgb`, `jpg`, `mp4`) |
+| `bg_color` | `str` | white | Background color for opaque output (`channels="rgb"`, `jpg`, `mp4`); ignored for transparent output |
 | `size` | `"full" \| "preview" \| "medium" \| "hd"` | `"full"` | Output size preset (images: megapixel cap; video: longest side 640 / 1280 / 1920, `full` = source up to 4K); ignored when `width`/`height` is set |
-| `crop` | `bool \| str` | `False` | Images only. Crop to subject bounds, or an aspect ratio like `"1:1"` |
+| `crop` | `bool \| str` | `False` | Images only. Crop to subject bounds, or an aspect ratio like `"1:1"` (only sent when enabled) |
 | `padding` | `str` | `"10%"` | Images only. Padding around the subject when cropping (`"10%"`, `"0.1"`, or `"10%,7.5%"`) |
 | `width` | `int` | `None` | Images only. Output width in pixels (1-6000); alone, height follows the aspect ratio |
 | `height` | `int` | `None` | Images only. Output height in pixels (1-6000); alone, width follows the aspect ratio |
@@ -271,7 +275,7 @@ Download a completed job (or a bare `result_url`) to `path`. No API key is neede
 | `progress` | `float` | Fraction processed, 0 to 1 |
 | `is_done` | `bool` | True once `completed` or `failed` |
 | `duration_seconds`, `fps`, `width`, `height`, `frames` | | Properties of the input video |
-| `credits` | `int` | Credits charged (5 per second, refunded on failure) |
+| `credits` | `int` | Credits charged: 5 per second rounded up, 10 above 30 fps (animated GIF input always 5 per second); refunded on failure |
 | `format`, `channels` | `str` | Output format and channels |
 | `result_url` | `str \| None` | Public download URL once completed |
 | `expires_at` | `str \| None` | When `result_url` stops working (24 h after completion) |

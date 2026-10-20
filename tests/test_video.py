@@ -328,3 +328,37 @@ def test_job_from_dict_round_trip():
     job = Job.from_dict(json.loads(json.dumps(JOB)))
     assert job.duration_seconds == 12.4 and job.width == 1920 and job.channels == "rgba"
     assert job.status_url.endswith("/jobs/job_8f3a1c2e9b7d4a10")
+
+
+def test_crop_false_is_not_sent_for_video():
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["request"] = request
+        return httpx.Response(202, json=JOB)
+
+    _client(handler).remove_background(io.BytesIO(b"\x00" * 16), crop=False)
+
+    fields, _ = _parts(captured["request"])
+    assert "crop" not in fields
+
+
+def test_validation_error_keeps_details_dict_and_doc_url():
+    from poof import ValidationError
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            400,
+            json={
+                "code": "validation_error",
+                "message": "crop is not supported for video",
+                "details": {"field": "crop"},
+                "request_id": "req_1",
+                "doc_url": "https://docs.poof.bg/errors/validation-error",
+            },
+        )
+
+    with pytest.raises(ValidationError) as excinfo:
+        _client(handler).remove_background(io.BytesIO(b"\x00" * 16), crop=True)
+    assert excinfo.value.details == {"field": "crop"}
+    assert excinfo.value.doc_url == "https://docs.poof.bg/errors/validation-error"
