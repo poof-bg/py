@@ -36,7 +36,7 @@ from .exceptions import (
     ValidationError,
 )
 
-__version__ = "0.4.0"
+__version__ = "0.4.1"
 __all__ = [
     "Poof",
     "PoofError",
@@ -174,8 +174,10 @@ class Job:
         width: Width of the input video in pixels.
         height: Height of the input video in pixels.
         frames: Number of frames in the input video.
-        credits: Credits charged for this job (refunded if it fails).
-        format: Output container: ``webm``, ``mov`` or ``mp4``.
+        credits: Credits charged for this job: 5 per second, rounded up
+            (10 above 30 fps; animated GIF input is always 5 per second).
+            Refunded if it fails.
+        format: Output container: ``webm``, ``mov``, ``mp4`` or ``gif``.
         channels: Output channels: ``rgba``, ``rgb`` or ``alpha``.
         status_url: URL to poll for this job.
         result_url: Public download URL of the result once ``completed``,
@@ -298,11 +300,13 @@ class Poof:
             message = error_data.get("message", "Unknown error")
             details = error_data.get("details")
             request_id = error_data.get("request_id")
+            doc_url = error_data.get("doc_url")
         except Exception:
             code = "unknown_error"
             message = response.text or f"HTTP {response.status_code}"
             details = None
             request_id = response.headers.get("X-Request-ID")
+            doc_url = None
 
         error_kwargs = {
             "message": message,
@@ -310,6 +314,7 @@ class Poof:
             "details": details,
             "request_id": request_id,
             "status_code": response.status_code,
+            "doc_url": doc_url,
         }
 
         if response.status_code == 401:
@@ -394,19 +399,23 @@ class Poof:
             url: Public HTTPS URL of the image or video to process instead of
                 uploading it (videos up to 500 MB).
             format: Output format. Images: "png" (default), "jpg" or "webp".
-                Videos: "webm" (default, VP9 with alpha), "mov" (ProRes 4444)
-                or "mp4" (H.264, composited on ``bg_color``).
+                Videos: "webm" (default, VP9 with alpha), "mov" (ProRes 4444),
+                "mp4" (H.264, composited on ``bg_color``) or "gif" (looping,
+                1-bit transparency, no audio, capped at 1280 px on the longest
+                side / 720p for widescreen and 50 fps).
             channels: Color channels - "rgba" for transparency, "rgb" for opaque,
                 "alpha" for the grayscale alpha matte only. Defaults to "rgba".
-            bg_color: Background color when the output has no alpha ("rgb",
-                "jpg", "mp4"). Can be hex (#ffffff), rgb, or color name.
-                Defaults to white.
+            bg_color: Background color for opaque output (channels "rgb",
+                format "jpg" or "mp4"); ignored for transparent output. Can be
+                hex (#ffffff), rgb, or color name. Defaults to white.
             size: Output size preset - "full", "preview", "medium", "hd".
                 Defaults to "full". For videos the longest side is capped at
                 640 (preview), 1280 (medium), 1920 (hd) or the source
                 resolution up to 4096 px / 4K (full).
             crop: Images only. Crop the image to the subject bounds. Pass
-                True/False or an aspect ratio string like "1:1", "4:3", "16:9".
+                True or an aspect ratio string like "1:1", "4:3", "16:9".
+                Only sent when enabled, so ``crop=False`` is a no-op (also
+                for videos).
             padding: Images only. Padding around the subject when crop is
                 enabled, as a fraction ("0.1") or percentage ("10%").
             width: Images only. Output width in pixels (1-6000). On its own,
@@ -428,7 +437,8 @@ class Poof:
             FileNotFoundError: If the path doesn't exist.
             ValueError: If neither or both of ``image`` and ``url`` are given.
             AuthError: Invalid or missing API key.
-            PaymentRequiredError: Insufficient credits.
+            PaymentRequiredError: Insufficient credits (for a video: not
+                enough left to cover the whole clip).
             RateLimitError: Rate limit exceeded.
             ValidationError: Invalid parameters or file.
             ServerError: Server-side error.
@@ -462,8 +472,12 @@ class Poof:
             form_data["bg_color"] = bg_color
         if size is not None:
             form_data["size"] = size
-        if crop is not None:
-            form_data["crop"] = str(crop).lower() if isinstance(crop, bool) else crop
+        # crop defaults to off and is image-only: only send it when enabled,
+        # so crop=False on a video is not rejected with a validation_error.
+        if crop is True:
+            form_data["crop"] = "true"
+        elif isinstance(crop, str) and crop:
+            form_data["crop"] = crop
         if padding is not None:
             form_data["padding"] = padding
         if width is not None:
