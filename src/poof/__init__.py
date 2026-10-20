@@ -36,7 +36,7 @@ from .exceptions import (
     ValidationError,
 )
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 __all__ = [
     "Poof",
     "PoofError",
@@ -64,7 +64,7 @@ DEFAULT_TIMEOUT = 60.0
 # Type aliases
 ImageInput = Union[str, Path, bytes, BinaryIO]
 Format = Literal["png", "jpg", "webp"]
-VideoFormat = Literal["webm", "mov", "mp4"]
+VideoFormat = Literal["webm", "mov", "mp4", "gif"]
 Channels = Literal["rgba", "rgb", "alpha"]
 Size = Literal["full", "preview", "medium", "hd"]
 Fit = Literal["contain", "cover", "scale-down"]

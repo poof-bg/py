@@ -87,7 +87,7 @@ result = client.remove_background("photo.jpg", width=1000, fit="scale-down")
 
 ### Video
 
-Videos go through the same `remove_background()` call. Poof detects the media type from the bytes: an image comes back at once, a video is accepted as a `Job` that you poll and then download. The result is a transparent WebM by default; `format="mov"` gives a ProRes 4444 MOV, `format="mp4"` an H.264 video composited on `bg_color`, and `channels="alpha"` a grayscale alpha matte. Audio, frame rate and duration are preserved. Video costs 5 credits per second.
+Videos go through the same `remove_background()` call. Poof detects the media type from the bytes: an image comes back at once, a video is accepted as a `Job` that you poll and then download. The result is a transparent WebM by default; `format="mov"` gives a ProRes 4444 MOV, `format="mp4"` an H.264 video composited on `bg_color`, `format="gif"` a looping GIF with 1-bit transparency and no audio, capped at 720p (for stickers and chat; add `size="preview"` for sticker-sized output), and `channels="alpha"` a grayscale alpha matte. Audio, frame rate and duration are preserved. An animated GIF is accepted as input too. Video costs 5 credits per second.
 
 ```python
 from poof import Job, Poof
@@ -229,7 +229,7 @@ Remove the background from an image or a video.
 |-----------|------|---------|-------------|
 | `image` | `str \| Path \| bytes \| BinaryIO` | `None` | Image or video to upload (one of `image`/`url`) |
 | `url` | `str` | `None` | Public HTTPS URL of the image or video instead of an upload |
-| `format` | `"png" \| "jpg" \| "webp"` / `"webm" \| "mov" \| "mp4"` | `"png"` / `"webm"` | Output format (images / videos) |
+| `format` | `"png" \| "jpg" \| "webp"` / `"webm" \| "mov" \| "mp4" \| "gif"` | `"png"` / `"webm"` | Output format (images / videos) |
 | `channels` | `"rgba" \| "rgb" \| "alpha"` | `"rgba"` | Color channels (`alpha` = grayscale matte only) |
 | `bg_color` | `str` | white | Background color when the output has no alpha (`rgb`, `jpg`, `mp4`) |
 | `size` | `"full" \| "preview" \| "medium" \| "hd"` | `"full"` | Output size preset (images: megapixel cap; video: longest side 640 / 1280 / 1920, `full` = source up to 4K); ignored when `width`/`height` is set |
