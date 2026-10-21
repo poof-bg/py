@@ -235,7 +235,7 @@ Remove the background from an image or a video.
 | `url` | `str` | `None` | Public HTTPS URL of the image or video instead of an upload |
 | `format` | `"png" \| "jpg" \| "webp"` / `"webm" \| "mov" \| "mp4" \| "gif"` | `"png"` / `"webm"` | Output format (images / videos) |
 | `channels` | `"rgba" \| "rgb" \| "alpha"` | `"rgba"` | Color channels (`alpha` = grayscale matte only) |
-| `bg_color` | `str` | white | Background color for opaque output (`channels="rgb"`, `jpg`, `mp4`); ignored for transparent output |
+| `bg_color` | `str` | none | Background color. Setting it fills the background, so the result is opaque (videos too, in every format); with `channels="rgb"`, `jpg` or `mp4` and no `bg_color` the background is white. Ignored with `channels="alpha"` |
 | `size` | `"full" \| "preview" \| "medium" \| "hd"` | `"full"` | Output size preset (images: megapixel cap; video: longest side 640 / 1280 / 1920, `full` = source up to 4K); ignored when `width`/`height` is set |
 | `crop` | `bool \| str` | `False` | Images only. Crop to subject bounds, or an aspect ratio like `"1:1"` (only sent when enabled) |
 | `padding` | `str` | `"10%"` | Images only. Padding around the subject when cropping (`"10%"`, `"0.1"`, or `"10%,7.5%"`) |

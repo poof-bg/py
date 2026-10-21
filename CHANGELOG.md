@@ -2,6 +2,12 @@
 
 All notable changes to `poofbg`. Versions follow [semver](https://semver.org).
 
+## Unreleased
+
+### Docs
+
+- `bg_color`: one rule for images and videos. Setting it fills the background, so the result is opaque on that colour (for video in every format, `webm`, `mov` and `gif` included); with `channels="rgb"` (or `jpg`/`mp4`) and no `bg_color` the background is white; ignored with `channels="alpha"`. It was previously documented as ignored for transparent output.
+
 ## 0.4.1 - 2026-10-20
 
 ### Fixed
