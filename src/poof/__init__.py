@@ -405,9 +405,11 @@ class Poof:
                 side / 720p for widescreen and 50 fps).
             channels: Color channels - "rgba" for transparency, "rgb" for opaque,
                 "alpha" for the grayscale alpha matte only. Defaults to "rgba".
-            bg_color: Background color for opaque output (channels "rgb",
-                format "jpg" or "mp4"); ignored for transparent output. Can be
-                hex (#ffffff), rgb, or color name. Defaults to white.
+            bg_color: Background color: hex (#ffffff), rgb, or color name.
+                Setting it fills the background, so the result is opaque, for
+                images and videos in every format (webm, mov and gif included).
+                With channels "rgb" (or format "jpg"/"mp4") and no bg_color the
+                background is white. Ignored with channels "alpha".
             size: Output size preset - "full", "preview", "medium", "hd".
                 Defaults to "full". For videos the longest side is capped at
                 640 (preview), 1280 (medium), 1920 (hd) or the source
